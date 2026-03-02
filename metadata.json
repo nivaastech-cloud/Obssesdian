@@ -1,0 +1,7 @@
+{
+  "name": "Lumina AI Knowledge Vault",
+  "description": "An advanced AI-powered knowledge graph and note-taking application with universal import, auto-linking, and voice-to-knowledge capabilities.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
