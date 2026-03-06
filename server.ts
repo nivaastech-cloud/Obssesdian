@@ -5,12 +5,13 @@ import path from "path";
 import { fileURLToPath } from "url";
 import OpenAI from "openai";
 import { GoogleGenAI } from "@google/genai";
+import Groq from "groq-sdk";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const openai = new OpenAI({
-  apiKey: process.env.openai || process.env.OPENAI_API_KEY,
+const groq = new Groq({
+  apiKey: process.env.groq || process.env.GROQ_API_KEY,
 });
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
@@ -27,18 +28,19 @@ async function startServer() {
       const { messages, tools } = req.body;
       
       try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o",
+        const response = await groq.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
           messages: messages,
           tools: tools,
         });
         return res.json(response);
-      } catch (openaiError: any) {
-        // Fallback to Gemini if OpenAI fails due to quota/billing
-        if (openaiError.status === 429 || openaiError.message?.includes('quota')) {
-          console.warn("OpenAI Quota Exceeded. Falling back to Gemini...");
+      } catch (groqError: any) {
+        console.error("Groq Error:", groqError);
+        
+        // Fallback to Gemini if Groq fails
+        if (groqError.status === 429 || groqError.message?.includes('quota') || groqError.status === 401) {
+          console.warn("Groq issue detected. Falling back to Gemini...");
           
-          // Translate OpenAI messages to Gemini format
           const geminiContents = messages
             .filter((m: any) => m.role !== 'system')
             .map((m: any) => ({
@@ -48,11 +50,10 @@ async function startServer() {
 
           const systemInstruction = messages.find((m: any) => m.role === 'system')?.content;
 
-          // Check if Gemini key is valid before falling back
           const geminiKey = process.env.GEMINI_API_KEY;
           if (!geminiKey || geminiKey === "MY_GEMINI_API_KEY" || geminiKey.length < 10) {
-            return res.status(429).json({
-              error: "OpenAI quota exceeded and no valid Gemini API key found for fallback. Please check your OpenAI billing or provide a valid Gemini API key in secrets."
+            return res.status(500).json({
+              error: "Groq failed and no valid Gemini API key found for fallback. Please check your Groq API key or provide a valid Gemini API key in secrets."
             });
           }
 
@@ -64,17 +65,16 @@ async function startServer() {
             }
           });
 
-          // Return in a format the frontend expects (OpenAI-like)
           return res.json({
             choices: [{
               message: {
                 role: "assistant",
-                content: result.text + "\n\n*(Note: Switched to Gemini fallback due to OpenAI quota limits)*"
+                content: result.text + "\n\n*(Note: Switched to Gemini fallback due to Groq API issues)*"
               }
             }]
           });
         }
-        throw openaiError;
+        throw groqError;
       }
     } catch (error: any) {
       console.error("Architect Error:", error);

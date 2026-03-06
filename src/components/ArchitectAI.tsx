@@ -19,7 +19,7 @@ export const ArchitectAI: React.FC = () => {
   const [input, setInput] = useState('');
   const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'assistant', content: "Hello! I'm your App Architect (now powered by OpenAI). I can help you build your app's code OR manage your notes. What would you like to do?" }
+    { role: 'assistant', content: "Hello! I'm your App Architect (now powered by Groq). I can help you build your app's code OR manage your notes. What would you like to do?" }
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -54,6 +54,14 @@ export const ArchitectAI: React.FC = () => {
       recognitionRef.current.onerror = (event: any) => {
         console.error('Speech recognition error:', event.error);
         setIsListening(false);
+        
+        if (event.error === 'not-allowed') {
+          alert('Microphone access was denied. Please ensure you have granted microphone permissions in your browser and that the preview has permission to access it.');
+        } else if (event.error === 'no-speech') {
+          // Ignore no-speech errors as they are common and annoying as alerts
+        } else {
+          alert(`Speech recognition error: ${event.error}`);
+        }
       };
     }
   }, []);
