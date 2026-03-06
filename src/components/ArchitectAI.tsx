@@ -1,25 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, X, Send, Loader2, Sparkles, Code, FileText, Trash2, FolderOpen } from 'lucide-react';
+import { Bot, X, Send, Loader2, Sparkles, Code, FileText, Trash2, FolderOpen, Mic, MicOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { architectChat, executeFunctionCall } from '../services/architectService';
 import { useStore } from '../store';
 import ReactMarkdown from 'react-markdown';
 
 interface Message {
-  role: 'user' | 'model';
-  content: string;
+  role: 'user' | 'assistant' | 'tool';
+  content: string | null;
   isThinking?: boolean;
+  tool_calls?: any[];
+  tool_call_id?: string;
 }
 
 export const ArchitectAI: React.FC = () => {
   const { notes, addNote, updateNote } = useStore();
   const [isOpen, setIsOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [isListening, setIsListening] = useState(false);
   const [messages, setMessages] = useState<Message[]>([
-    { role: 'model', content: "Hello! I'm your App Architect. I can help you build your app's code OR manage your notes. What would you like to do?" }
+    { role: 'assistant', content: "Hello! I'm your App Architect (now powered by OpenAI). I can help you build your app's code OR manage your notes. What would you like to do?" }
   ]);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -27,82 +31,132 @@ export const ArchitectAI: React.FC = () => {
     }
   }, [messages]);
 
+  useEffect(() => {
+    // Initialize Speech Recognition
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = true;
+      recognitionRef.current.interimResults = true;
+
+      recognitionRef.current.onresult = (event: any) => {
+        let transcript = '';
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        setInput(transcript);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+      };
+    }
+  }, []);
+
+  const toggleListening = () => {
+    if (!recognitionRef.current) {
+      alert('Speech recognition is not supported in this browser.');
+      return;
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      setInput('');
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
+
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
+    if (isListening) {
+      recognitionRef.current.stop();
+    }
+
     const userMessage = input.trim();
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    const newMessages: Message[] = [...messages, { role: 'user', content: userMessage }];
+    setMessages(newMessages);
     setIsLoading(true);
 
     try {
-      let response = await architectChat.sendMessage({ message: userMessage });
+      let currentMessages = newMessages.map(m => ({ role: m.role, content: m.content, tool_calls: m.tool_calls, tool_call_id: m.tool_call_id }));
+      let response = await architectChat(currentMessages);
       
-      // Handle function calls if any
-      while (response.functionCalls) {
-        const functionResponses = [];
+      while (response.choices[0].message.tool_calls) {
+        const toolCalls = response.choices[0].message.tool_calls;
+        const assistantMessage = response.choices[0].message;
         
-        for (const call of response.functionCalls) {
-          if (!call.name) continue;
+        // Add assistant message with tool calls to history
+        currentMessages.push(assistantMessage);
+        setMessages(prev => [...prev, { ...assistantMessage, role: 'assistant' }]);
+
+        const toolResponses = [];
+        
+        for (const call of toolCalls) {
+          const functionName = call.function.name;
+          const args = JSON.parse(call.function.arguments);
           
           setMessages(prev => [...prev, { 
-            role: 'model', 
-            content: `Executing: ${call.name}(${JSON.stringify(call.args)})`,
+            role: 'assistant', 
+            content: `Executing: ${functionName}(${call.function.arguments})`,
             isThinking: true 
           }]);
           
           try {
             let result;
-            // Handle App Data tools locally
-            if (call.name === 'createNote') {
-              const id = addNote(call.args.title as string, null);
-              if (call.args.content) {
-                updateNote(id, { content: call.args.content as string });
+            if (functionName === 'createNote') {
+              const id = addNote(args.title, null);
+              if (args.content) {
+                updateNote(id, { content: args.content });
               }
-              result = { success: true, id, message: `Note "${call.args.title}" created successfully.` };
-            } else if (call.name === 'listNotes') {
+              result = { success: true, id, message: `Note "${args.title}" created successfully.` };
+            } else if (functionName === 'listNotes') {
               result = notes.map(n => ({ id: n.id, title: n.title }));
-            } else if (call.name === 'updateNote') {
-              updateNote(call.args.id as string, { 
-                title: call.args.title as string, 
-                content: call.args.content as string 
-              });
+            } else if (functionName === 'updateNote') {
+              updateNote(args.id, { title: args.title, content: args.content });
               result = { success: true, message: `Note updated successfully.` };
             } else {
-              // Handle Source Code tools via API
-              result = await executeFunctionCall(call as { name: string; args: any });
+              result = await executeFunctionCall({ name: functionName, args });
             }
 
-            functionResponses.push({
-              name: call.name,
-              response: result,
-              id: call.id
-            });
+            const toolResponse = {
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify(result)
+            };
+            toolResponses.push(toolResponse);
           } catch (err: any) {
-            functionResponses.push({
-              name: call.name,
-              response: { error: err.message },
-              id: call.id
+            toolResponses.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify({ error: err.message })
             });
           }
         }
 
-        // Remove the "thinking" messages before sending function responses
+        // Remove thinking messages
         setMessages(prev => prev.filter(m => !m.isThinking));
         
-        response = await architectChat.sendMessage({
-          message: {
-            role: 'user',
-            parts: functionResponses.map(fr => ({
-              functionResponse: fr
-            }))
-          } as any // The SDK type for sendMessage is a bit restrictive, but it works
-        });
+        // Add tool responses to history
+        currentMessages.push(...toolResponses);
+        setMessages(prev => [...prev, ...toolResponses as any]);
+
+        // Get next response from model
+        response = await architectChat(currentMessages);
       }
 
-      setMessages(prev => [...prev, { role: 'model', content: response.text || "I've completed the task." }]);
+      const finalMessage = response.choices[0].message;
+      setMessages(prev => [...prev, { role: 'assistant', content: finalMessage.content }]);
     } catch (error: any) {
-      setMessages(prev => [...prev, { role: 'model', content: `Error: ${error.message}` }]);
+      setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${error.message}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -162,7 +216,7 @@ export const ArchitectAI: React.FC = () => {
               ref={scrollRef}
               className="flex-1 overflow-y-auto p-4 space-y-4 scrollbar-thin scrollbar-thumb-zinc-800"
             >
-              {messages.map((msg, i) => (
+              {messages.filter(msg => msg.role !== 'tool' && (msg.content || msg.isThinking)).map((msg, i) => (
                 <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${
                     msg.role === 'user' 
@@ -173,7 +227,7 @@ export const ArchitectAI: React.FC = () => {
                   }`}>
                     {msg.isThinking && <Loader2 size={14} className="animate-spin mb-1" />}
                     <div className="markdown-body prose prose-invert prose-sm max-w-none">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+                      <ReactMarkdown>{msg.content || ''}</ReactMarkdown>
                     </div>
                   </div>
                 </div>
@@ -195,16 +249,28 @@ export const ArchitectAI: React.FC = () => {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                  placeholder="Ask me to build something..."
-                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-4 pr-12 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 transition-colors"
+                  placeholder={isListening ? "Listening..." : "Ask me to build something..."}
+                  className={`w-full bg-zinc-950 border border-zinc-800 rounded-xl py-3 pl-4 pr-24 text-sm text-zinc-200 placeholder:text-zinc-600 focus:outline-none focus:border-indigo-500/50 transition-colors ${isListening ? 'border-indigo-500/50 ring-1 ring-indigo-500/20' : ''}`}
                 />
-                <button
-                  onClick={handleSend}
-                  disabled={isLoading || !input.trim()}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                >
-                  <Send size={16} />
-                </button>
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  <button
+                    onClick={toggleListening}
+                    className={`w-8 h-8 rounded-lg flex items-center justify-center transition-colors ${
+                      isListening 
+                        ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' 
+                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'
+                    }`}
+                  >
+                    {isListening ? <MicOff size={16} /> : <Mic size={16} />}
+                  </button>
+                  <button
+                    onClick={handleSend}
+                    disabled={isLoading || !input.trim()}
+                    className="w-8 h-8 bg-indigo-600 text-white rounded-lg flex items-center justify-center hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <Send size={16} />
+                  </button>
+                </div>
               </div>
               <p className="mt-2 text-[10px] text-zinc-600 text-center">
                 I can read, create, and modify any file in this project.
