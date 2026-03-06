@@ -3,6 +3,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { Editor } from './components/Editor';
 import { GraphView } from './components/GraphView';
+import { ArchitectAI } from './components/ArchitectAI';
 import { useStore } from './store';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -61,6 +62,7 @@ export default function App() {
           </AnimatePresence>
         </main>
       </div>
+      <ArchitectAI />
     </div>
   );
 }
