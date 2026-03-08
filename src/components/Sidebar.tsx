@@ -14,8 +14,8 @@ import {
   Mic,
   Upload
 } from 'lucide-react';
-import { useStore } from '../store/useStore';
-import { LuminaFolder, LuminaNote } from '../types/index';
+import { useStore } from '../store';
+import { Folder, Note } from '../types';
 import { cn } from '../utils/cn';
 
 export const Sidebar = () => {
@@ -29,9 +29,7 @@ export const Sidebar = () => {
     deleteFolder, 
     deleteNote, 
     updateFolder, 
-    searchQuery,
-    setImporting,
-    setRecording
+    searchQuery
   } = useStore();
   
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['f1', 'f2', 'f3']));
@@ -45,7 +43,7 @@ export const Sidebar = () => {
     setExpandedFolders(next);
   };
 
-  const startEditing = (folder: LuminaFolder) => {
+  const startEditing = (folder: Folder) => {
     setEditingFolderId(folder.id);
     setEditName(folder.name);
   };
@@ -121,7 +119,7 @@ export const Sidebar = () => {
                 )}
               </div>
               <div className="hidden group-hover:flex items-center gap-1">
-                <button onClick={() => addNote('New Note', '', folder.id)} title="New Note"><Plus size={12} /></button>
+                <button onClick={() => addNote('New Note', folder.id)} title="New Note"><Plus size={12} /></button>
                 <button onClick={() => addFolder('New Folder', folder.id)} title="New Subfolder"><FolderPlus size={12} /></button>
                 <button onClick={() => startEditing(folder)} title="Rename Folder"><Edit2 size={12} /></button>
                 <button onClick={() => deleteFolder(folder.id)} title="Delete Folder"><Trash2 size={12} /></button>

@@ -2,14 +2,13 @@
 
 import React, { useEffect, useRef, useMemo, useState } from 'react';
 import * as d3 from 'd3';
-import { useStore } from '../store/useStore';
+import { useStore } from '../store';
 import { Maximize2 } from 'lucide-react';
-import { SourceType, LuminaNote } from '../types/index';
+import { Note } from '../types';
 
 interface Node extends d3.SimulationNodeDatum {
   id: string;
   title: string;
-  sourceType: SourceType;
   isOrphan: boolean;
   isActive: boolean;
 }
@@ -42,13 +41,15 @@ export const GraphView = () => {
   }, []);
 
   const graphData = useMemo(() => {
-    const nodes: Node[] = notes.map(note => ({
-      id: note.id,
-      title: note.title,
-      sourceType: note.sourceType,
-      isOrphan: note.linksTo.length === 0 && note.backlinks.length === 0,
-      isActive: note.id === selectedNoteId,
-    }));
+    const nodes: Node[] = notes.map(note => {
+      const backlinks = notes.filter(n => n.linksTo.includes(note.id));
+      return {
+        id: note.id,
+        title: note.title,
+        isOrphan: note.linksTo.length === 0 && backlinks.length === 0,
+        isActive: note.id === selectedNoteId,
+      };
+    });
 
     const links: Link[] = [];
     notes.forEach(note => {
@@ -120,10 +121,7 @@ export const GraphView = () => {
       .attr("fill", d => {
         if (d.isActive) return "#a882ff";
         if (d.isOrphan) return "#ef4444"; // red
-        if (d.sourceType === 'import') return "#3b82f6"; // blue
-        if (d.sourceType === 'voice') return "#22c55e"; // green
-        if (d.sourceType === 'ai') return "#a855f7"; // purple
-        return "#ffffff"; // manual
+        return "#ffffff"; // default
       })
       .attr("stroke", d => d.isActive ? "#a882ff" : "none")
       .attr("stroke-width", 2)

@@ -12,7 +12,7 @@ import {
   FilePlus,
   FolderPlus
 } from 'lucide-react';
-import { useStore } from '../store/useStore';
+import { useStore } from '../store';
 import { cn } from '../utils/cn';
 
 export const TopBar = () => {
@@ -21,8 +21,6 @@ export const TopBar = () => {
     setSearchQuery, 
     isGraphView, 
     toggleGraphView, 
-    setImporting, 
-    setRecording,
     addNote,
     addFolder
   } = useStore();
@@ -41,7 +39,7 @@ export const TopBar = () => {
         
         <div className="flex items-center gap-1">
           <button 
-            onClick={() => addNote('New Note', '', null)}
+            onClick={() => addNote('New Note', null)}
             className="p-2 text-[#666666] hover:text-white hover:bg-[#2c2c2c] rounded-lg transition-all"
             title="New Note"
           >
@@ -73,14 +71,12 @@ export const TopBar = () => {
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-1 bg-[#2c2c2c]/50 p-1 rounded-xl border border-[#2c2c2c]">
           <button 
-            onClick={() => setImporting(true)}
             className="p-2 text-[#999999] hover:text-white hover:bg-[#2c2c2c] rounded-lg transition-all"
             title="Import Center"
           >
             <Upload size={18} />
           </button>
           <button 
-            onClick={() => setRecording(true)}
             className="p-2 text-[#999999] hover:text-white hover:bg-[#2c2c2c] rounded-lg transition-all"
             title="Voice Capture"
           >

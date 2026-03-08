@@ -12,8 +12,8 @@ import {
   Share2,
   Trash2
 } from 'lucide-react';
-import { useStore } from '../store/useStore';
-import { LuminaNote } from '../types/index';
+import { useStore } from '../store';
+import { Note } from '../types';
 import { cn } from '../utils/cn';
 
 export const Editor = () => {
